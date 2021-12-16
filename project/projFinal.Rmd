@@ -1,0 +1,338 @@
+---
+title: "Vaccination Rate in Wisconsin"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE,
+                      autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(lubridate)
+library(XML)
+source("../scripts/viridis.R")
+source("../scripts/ggprob.R")
+```
+### **Contributors**
+
+  - REENA SINGHAL 
+  - MALAVIKA UNNIKRISHNAN 
+  - YICEN YANG
+  - JIALI ZHENG 
+  - JIAHUA PAN
+
+### **Introduction**
+
+
+COVID vaccination is a hot topic in most of the world right now, and the reasons vaccinate are equally as hotly debated. So there must be factors that effect the decisions of those that get vaccinated for there to be such an intense debate. Our point of interest for this project is on the Wisconsin vaccination rate. The data of vaccination can be important because it gives us inference of the state. We can use it to predict future trend of the infection, help making policy about vaccination and so on. In our project, our questions revolve around a common theme: whether people from Wisconsin randomly take the vaccine, or if there some certain order behind their decisions.
+
+ 
+### **Background**
+
+
+The data we used is collected by State and county health departments, overseen by the Centers for Disease Control and Prevention. According to the official description provided on the website for the Wisconsin Department of Health Services (DHS), vaccination data is collected every night at 11:30pm, extracting vaccine administration data from Wisconsin Immunization Registry (WIR) that will be reported on the DHS website by 2:00pm the following day. WIR is a live system and providers are constantly sending immunization data. Therefore, data will look different if it is extracted at a different day. The data contains the vaccination rate of each county in Wisconsin. It also contain the vaccination rate of each sex and of different age groups, which we will extract from the overall file to do further analysis.
+
+The links of the data are listed as follows:
+
+[1]https://www.dhs.wisconsin.gov/covid-19/data-101.htm
+
+[2]https://www.dhs.wisconsin.gov/covid-19/vaccine-data.htm
+
+[3]https://data.news-leader.com/covid-19-vaccine-tracker/wisconsin/55/
+
+- Some Key Variables are : 
+  - Area (county name)
+  - Population in each Area 
+  - People vaccinated with at least one dose(with percentage)
+  - People fully vaccinated(with percentage)
+  - Time
+
+Link to full code : https://github.com/mal-cul1830/wisc_covid
+  
+### **Questions of Interest**
+
+  - What is the vaccination rate of the state of Wisconsin?
+  - Will age affect vaccination rate?
+  - Will sex affect vaccination rate?
+  - What is the percentage of vaccination population in each county? 
+  - Is there any county that shows an interesting trend, or differences from other counties?
+  - What is the difference of vaccination rate between the county with the biggest population and that with the smallest population?
+  
+
+### **Method**
+
+
+We will use two bar graphs to show the number of vaccination in each county, grouped by sex and age range. Also we can approximately treat the vaccination situation in each county as a binomial model. The BINS is satisfied because: first, the result for one person to be fully vaccinated is either yes or no, and second, we assume they are independent on each other .(i.e. people will not change their mind or make decision based on others' vaccination status). Meanwhile, the number of trails is the experiment population. Finally, the fixed probability is the fully vaccinated population divided by the whole county population. As a result, we can then do a binomial model and find confidence interval at 95% confidence level and do hypothesis test (let the null hypothesis be that the probability of one to get vaccinated is 0.5)
+```{r,include=FALSE}
+###all the data are downloaded on 2021/11/22
+
+data=read_csv("../data/Overall.csv")%>%
+  rename(region=Demographic,
+         number='Number with at least one dose',
+         percentage='At Least One Dose (%)')%>%
+  select(County,region,number,percentage,Population )%>%
+  mutate_all(funs(ifelse(is.na(.), 0, .)))
+data
+age=read_csv("../data/Age.csv")%>%
+  rename(age=Demographic,
+         number='Number with at least one dose',
+         percentage='At Least One Dose (%)')%>%
+  select(County,age,number,percentage,Population )%>%
+  mutate_all(funs(ifelse(is.na(.), 0, .)))
+  
+age
+sex=read_csv("../data/Sex.csv")%>%
+  select(-'Date Downloaded' )%>%
+  rename(sex=Demographic,
+         number='Number with at least one dose',
+         percentage='At Least One Dose (%)')%>%
+  select(County,sex,number,percentage,Population )%>%
+  mutate_all(funs(ifelse(is.na(.), 0, .)))
+sex
+
+```
+### **Analysis**
+
+
+#### Vaccination Versus Age and sex
+
+We want to know what percentage of population based on sex get at least one dose in the top ten counties with the largest population in Wisconsin? We made a bar graph with x-axis representing gender and y-axis representing the percentage of that group who have received at least one dose of the vaccine, and with different facets for each county.
+```{r}
+main=sex%>%
+  group_by(County)%>%
+  summarise(population=sum(Population))%>%
+  arrange(desc(population))%>%
+  slice(-1)%>%
+  slice(1:10)%>%
+  pull(County)
+q1=sex%>%
+  filter(County%in%main)
+```
+
+```{r}
+ggplot(q1,aes(x=sex))+
+  geom_col(aes(y=percentage,fill=sex))+
+  facet_wrap(~County)+
+  xlab("Sex")+
+  ylab("Percentage of Vaccinated Population") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 5, hjust = 1), 
+        legend.title = element_blank()) +
+  ggtitle("Proportion of people get at least one dose according to the sex",
+          subtitle = "Factor: county with top 10 population")
+```
+
+
+We observe that in each of these 10 counties, the proportion of the female population that has received at least one dose is higher than the male population. It seems like in the Dane County, the difference in the percentage between male and female taking at least one dose population is not very large. 
+
+
+
+
+
+Then, we try to figure out if there is any relationship between age and vaccinated percentage (Is there any obvious trait). We continued to work with the top 10 counties with the largest populations. We made a set of bar-graphs, letting the x-axis represent the age range and y-axis represent the percentage of that group who have received at least one dose of the vaccine, and with different facets for each county.
+
+```{r}
+q2=age%>%
+  filter(County%in%main)
+
+ggplot(q2,aes(x=age))+
+  geom_col(aes(y=percentage,fill=age))+
+  facet_wrap(~County)+
+  xlab("Age Range")+
+  ylab("Percentage of Vaccinated Population") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme(axis.text.y =  element_blank(), 
+        legend.title = element_blank())+
+  ggtitle("Proportion of people get at least one dose according to the age range",
+          subtitle = "Factor: county with top 10 population")
+```
+
+
+
+
+Interestingly, almost every county shows a clear trend: as the age increases, the percentage of vaccinated people in that age population increases. This could be associated with the fact that vaccines for older age groups were rolled out the earliest.[4] Moreover, since older populations are considered "At Risk", they likely have a greater incentive to choose to be vaccinated. Dane once again becomes the special case since it do not show a clear trend based on age.
+
+
+
+
+#### An Interesting County
+
+Then, we designed one binomial test with the Dane County: We can then do a binomial model and finding confidence interval at 95% confidence level and doing hypothesis test. 
+```{r,include=FALSE}
+Dane=data%>%
+  filter(County=="Dane County")
+x=Dane%>%
+  pull(number)
+N=Dane%>%
+  pull(Population)
+p=x/N
+se=sqrt(p*(1-p)/N)
+confidence_interval=p+c(-1,1)*se*qnorm(0.975)
+confidence_interval
+```
+##### confidence_interval                                                                 
+[1] 0.7537762 0.7560566
+
+From the result, we are 95% confident that the true mean of the vaccination rate, or the possibility that one in Dane County is willing to be vaccinated, is captured in the interval 0.754 and 0.756. It seems possible since our true percentage of vaccination is 0.7549. 
+
+#### State Probability
+
+We could repeat doing the confidence level analysis in the whole State.
+```{r, include=FALSE}
+State=data%>%
+  slice(74)
+x_S=State%>%
+  pull(number)
+N_S=State%>%
+  pull(Population)
+p_S=x_S/N_S
+se_S=sqrt(p_S*(1-p_S)/N_S)
+confidence_interval=p_S+c(-1,1)*se_S*qnorm(0.975)
+confidence_interval
+```
+
+##### confidence_interval                                                                                      
+[1] 0.5865779 0.5873778
+
+Again, by observing the result, in this way we could say that we are 95% confident that the true possibility of someone who lives in Wisconsin that wants to take one dose of vaccine falls in the interval 0.5866 and 0.5873.
+
+Now, in the previous question, we see that in Dane County, the trend of vaccination rate shows no clear pattern. We could not draw a clear conclusion based on sex and age either. Do people randomly (i.e. the probability of someone being vaccinated is 0.5) make their decision about whether or not take the vaccine in Dane county? 
+With this question in mind we construct our hypothesis:
+
+  - H0: the probability of one taking one dose is equal to 0.5
+  - Ha: the probability of one taking one dose is not equal to 0.5
+
+```{r, include=FALSE}
+pvalue=sum(dbinom(c(0:(N-x),x:N), N, 0.5))
+pvalue
+```
+*p-value = 0*
+
+
+Also, one another way is directly using the R function to solve it, we get
+```{r, include=FALSE}
+binom.test(412709,546695,p=0.5,alternative="two.sided")$p.value
+```
+*p-value = 2.470328e-323*
+
+Both of the results shows a p-value <0.001, which is small enough for us to have a strong evidence to say that those citizens in Dane County do not randomly make decision.
+
+
+#### Vaccination Rates in Counties with the Biggest and Smallest Population
+
+Then we repeat the binomial test in the most and least populated county.
+```{r, include=FALSE}
+small=data%>%
+  arrange(Population)%>%
+  slice(3)
+large=data%>%
+  arrange(Population)%>%
+  slice(73)
+x=small%>%
+  pull(number)
+X=large%>%
+  pull(number)
+n=small%>%
+  pull(Population)
+N=large%>%
+  pull(Population)
+
+binom.test(x,n,p=0.5,alternative="two.sided")$p.value                                                           
+binom.test(X,N,p=0.5,alternative="two.sided")$p.value
+
+```
+For biggest population: *p-value = 3.178674e-182*                                                            
+For smallest population:          *p-value = 2.964394e-323*
+
+From the result, we could apply our test results to the whole state since we have tested the most populated county and least populated county in Wisconsin. As a result, we see that according to the p-value test, we could come to the conclusion that people in Wisconsin state will not make random decision (p-value<0.001).
+
+
+Finally, we made a comparison between the county with the biggest population and the county with the smallest population
+```{r}
+p=x/n
+P=X/N
+```
+We then do another hypothesis test with these two groups of data. We assume that:
+
+  - p1 is the probability that people in Florence County (the county with the smallest population) take one dose of vaccine                               
+  - p2 is the probability that people in Milwaukee County (the county with the biggest population) take one dose of vaccine
+
+
+
+We wonder if there is a significant difference between the two possibilities. We use two approaches. First, we analyze those data through a simulation with B (the number of trials) equal to 100000. Then the standard error can be calculated
+```{r, include=FALSE}
+B=100000
+vaccine_sim=tibble(
+  x1 = rbinom(B, n, p),
+  x2 = rbinom(B, N, P),
+  phat1 = x1/n,
+  phat2 = x2/N,
+  diff = phat1 - phat2
+  )
+vaccine_sim
+```
+
+```{r, include=FALSE}
+se_sim = vaccine_sim %>% 
+  summarize(se = sd(diff)) %>% 
+  pull(se)
+se_sim
+```
+se = 0.006725801                                                                          
+We expect the difference in sample proportions to differ by about 0.0067 from the true unknown difference.
+
+We can also visualize it:
+
+
+```{r}
+
+ggplot(vaccine_sim, aes(x = diff)) +
+  geom_density(fill = "papayawhip") +
+  geom_hline(yintercept = 0) +
+  xlab("Difference in Sample Proportions") +
+  ylab("Density") + 
+  ggtitle("Density Plot of Difference in Sample Proportions")+
+  theme_minimal()
+```
+
+
+
+
+
+It looks like a normal distribution. Next step is to construct a 95% confidence interval through the formula:
+  - $$(\text{point estimate}) \pm 1.96 \times (\text{standard error})$$
+  * Point estimate : we use p1-p2, the probability difference from the sample of two counties.
+```{r, include=FALSE}
+z=qnorm(0.975)
+confidence_intervial=(P-p)+c(-1,1)*z*se_sim
+confidence_intervial
+```
+
+
+According to the result, we are 95% confident that the difference in long-run probabilities that the people in Milwaukee County will take one dose of vaccine is 0.161 to 0.187 lower than that of people in Florence County. 
+
+
+
+### **Discussion**
+
+  For the first part of our work, the top ten counties can be treated as the representation of 72 counties in Wisconsin because they have the top 10 largest population. Of the variables we looked at in this project, we saw clear trends with when analyzing them: females had a higher rate of vaccination when compared to males and vaccination rates often increased wit age. Although they can not be confirmed, we can possibly draw some assumptions from these adults. Maybe women were more likely to be vaccinated because a large percentage of those who work in healthcare and schools are female. A theory we could present regarding the increase with vaccination rate with age is due to older people having had the ability to vaccinate for a longer period of time. The results of the age related test could also lead us to the conclusion that the distribution resulted from younger people feeling they do not need the vaccine as they don't belive they would die if they caught COVID and older people feeling that they need the vaccine because they are at greater risk of dying from COVID. It should be noted when looking at vaccination compared to age, the age ranges "18-24" and "25-34" seem to break the trend of the other counties: they sometimes have a lower percentage of their population of being vaccinated than the previous age range. One possible and reasonable guess might be that those people are mainly high school and college students and they are not willing or required to take vaccinate.
+  
+  As for the other half of our report, when it comes to our hypothesis test that determined the residents of Dane County don't randomly make their decisions this can lead us to the assumption that the difference in their results as compared to the other most populous counties. We could possibly speculate that this difference is due to another variable, such as the political leaning of the county or the presence of the large number of college students and staff in the county due to it containing the University of Wisconsin - Madison. We also found that people in the least populous county, Florence, were more likely to revive one dose of the vaccine than in the most populous county, Milwaukee. Once again we can draw possible theories from this information, such as that this difference could be the result of differences in the overall populations, as the counties may differ in average age, gender, race, political leaning, etc.
+  
+  This model may be criticized for the following weaknesses:
+
+* First, we ignore the identity of the county, such as the economy status and the political factors. 
+* Second, there were many data points named "unknowns", which we ignored during our analysis. 
+* Third, the sample we take might not be very representative (According to our data sheet of the whole State of Wisconsin's vaccination rate, the percentage of vaccination is about 58.7%, which shows that Dane County is still not good enough to be the representation of the whole state's population). 
+* Finally, the assumption that  people will not change their mind or make decision based on others' vaccination might fail: *Bandwagon effect will influence the decision made by people*. However, some further work on detailed factors such as economic and political status, or residents satisfaction in counties might be done in the future to make the research more reasonable. Accounting in some way for people who have made their decision to get vaccinated bases off others around them could also improve this report.
+
+
+ Overall, although there are several ways in which a later report could improve upon the results we have reached we can draw many conclusions and learn valuable information from what we have discovered. You can see how information like this could be valuable both to policy makers, who may want to cite vaccination rates by age when making decisions to re-open schools. Organizations that try to encourage getting vaccinated could use the data from our analysis based on gender to determine that they should target their ads more towards men. This data and the analysis is extremely valuable to policy makers and members of the different counties of Wisconsin.
+
+### **References**
+
+ 1. https://www.dhs.wisconsin.gov/covid-19/data-101.htm (accessed on (12.5))
+
+ 2. https://www.dhs.wisconsin.gov/covid-19/vaccine-data.htm (accessed on (12.6))
+
+ 3. https://data.news-leader.com/covid-19-vaccine-tracker/wisconsin/55/(accessed on (12.7))
+ 
+ 4. https://madison.com/wsj/news/local/health-med-fit/people-65-and-older-eligible-for-covid-19-vaccine-in-wisconsin-next-week/article_9b23ffa4-2940-500f-9f50-adc07e78f063.html
